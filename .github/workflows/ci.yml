@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  # 允許手動觸發，方便在不推 commit 的情況下重跑
+  workflow_dispatch:
+
+# 同一個分支上只保留最新一次執行，推連續 commit 時不會排隊塞住
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint、型別檢查、測試與建置
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # 用 lockfile 精確還原，避免 CI 裝到跟本機不同的版本
+      - name: 安裝相依套件
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: 型別檢查
+        run: npm run typecheck
+
+      - name: 測試
+        run: npm test
+
+      - name: 建置
+        run: npm run build
+        env:
+          # 建置階段不該需要真的金鑰；若哪天需要了，這裡會直接失敗而不是靜靜產出壞版本
+          NEXT_TELEMETRY_DISABLED: "1"

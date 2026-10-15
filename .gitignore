@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# 收藏庫資料（本機專屬，不進版控）
+data/
+
+.env
+.env.local
+.env*.local
+
+.DS_Store
+*.log
+coverage/
