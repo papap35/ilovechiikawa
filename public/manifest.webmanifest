@@ -1,0 +1,19 @@
+{
+  "name": "ilovechiikawa — 吉伊卡哇玩偶收藏管理",
+  "short_name": "ilovechiikawa",
+  "description": "拍照辨識角色、出處與真假，估算行情，管理你的吉伊卡哇玩偶收藏。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff8f1",
+  "theme_color": "#fff8f1",
+  "orientation": "portrait",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "拍照鑑定", "short_name": "鑑定", "url": "/scan" }
+  ]
+}
