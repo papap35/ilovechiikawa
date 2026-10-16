@@ -1,6 +1,9 @@
 import { listItems, selectDriver } from "@/lib/store";
 import { SettingsClient } from "@/components/SettingsClient";
 import { authMode } from "@/lib/auth";
+import { requireUser } from "@/lib/session";
+import { quotaStatus } from "@/lib/quota";
+import { hasApiKey } from "@/lib/ai/identify";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +13,8 @@ const DRIVER_LABELS: Record<string, string> = {
 };
 
 export default async function SettingsPage() {
-  const items = await listItems();
+  const user = await requireUser();
+  const items = await listItems(user.id);
   const driver = selectDriver();
 
   return (
@@ -19,6 +23,8 @@ export default async function SettingsPage() {
       driverName={driver.name}
       driverLabel={DRIVER_LABELS[driver.name] ?? driver.name}
       authMode={authMode()}
+      user={user}
+      quota={hasApiKey() ? await quotaStatus(user) : null}
     />
   );
 }

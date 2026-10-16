@@ -8,10 +8,12 @@ import type { Identification } from "@/lib/plush/schema";
 import { getChannel, type CurrencyRates } from "@/lib/plush/channels";
 import { getCharacter } from "@/lib/plush/characters";
 import { percent } from "@/lib/format";
+import type { QuotaStatus } from "@/lib/quota";
 
 interface IdentifyResponse {
   identification: Identification;
   mocked: boolean;
+  quota?: QuotaStatus | null;
   error?: string;
 }
 
@@ -20,9 +22,11 @@ const MAX_PHOTOS = 4;
 export function ScanClient({
   rates,
   apiKeyConfigured,
+  initialQuota,
 }: {
   rates: CurrencyRates;
   apiKeyConfigured: boolean;
+  initialQuota: QuotaStatus | null;
 }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -34,6 +38,10 @@ export function ScanClient({
   const [result, setResult] = useState<Identification | null>(null);
   const [mocked, setMocked] = useState(false);
   const [values, setValues] = useState<ItemFormValues>(emptyFormValues);
+  const [quota, setQuota] = useState<QuotaStatus | null>(initialQuota);
+  const quotaExhausted = quota !== null && quota.remaining === 0;
+  /** 不經過 AI、直接手動填表建檔。額度用完或想自己輸入時用。 */
+  const [manual, setManual] = useState(false);
 
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -62,8 +70,10 @@ export function ScanClient({
         body: JSON.stringify({ images: photos }),
       });
       const data = (await response.json()) as IdentifyResponse;
+      if (response.status === 429) setQuota((prev) => prev && { ...prev, remaining: 0 });
       if (!response.ok) throw new Error(data.error ?? "辨識失敗");
 
+      if (data.quota) setQuota(data.quota);
       const id = data.identification;
       setResult(id);
       setMocked(data.mocked);
@@ -174,12 +184,31 @@ export function ScanClient({
             type="button"
             className="btn btn-primary"
             onClick={() => void identify()}
-            disabled={photos.length === 0 || identifying}
+            disabled={photos.length === 0 || identifying || quotaExhausted}
           >
             {identifying && <span className="spinner" />}
             {identifying ? "鑑定中…" : "開始鑑定"}
           </button>
+          {!result && !manual && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setManual(true);
+                setValues({ ...emptyFormValues(), photo: photos[0] ?? null });
+              }}
+            >
+              不用 AI，手動建檔
+            </button>
+          )}
         </div>
+        {quota && quota.limit !== null && (
+          <p className="field-hint" style={{ marginBottom: 0 }}>
+            {quotaExhausted
+              ? "今天的 AI 鑑定次數已經用完，台灣時間午夜後重置。這段期間可以按「不用 AI，手動建檔」。"
+              : `今天還能 AI 鑑定 ${quota.remaining} 次（每天 ${quota.limit} 次）。`}
+          </p>
+        )}
       </section>
 
       {result && (
@@ -224,15 +253,18 @@ export function ScanClient({
             )}
           </section>
 
-          <ItemForm
-            values={values}
-            onChange={setValues}
-            rates={rates}
-            submitLabel="加入收藏庫"
-            onSubmit={() => void save()}
-            submitting={saving}
-          />
         </>
+      )}
+
+      {(result || manual) && (
+        <ItemForm
+          values={values}
+          onChange={setValues}
+          rates={rates}
+          submitLabel="加入收藏庫"
+          onSubmit={() => void save()}
+          submitting={saving}
+        />
       )}
     </main>
   );

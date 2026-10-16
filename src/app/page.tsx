@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listItems } from "@/lib/store";
+import { requireUser } from "@/lib/session";
 import { computeStats, itemValueTwd } from "@/lib/plush/stats";
 import { twd, signedTwd } from "@/lib/format";
 import { CollectionBrowser } from "@/components/CollectionBrowser";
@@ -7,7 +8,8 @@ import { CollectionBrowser } from "@/components/CollectionBrowser";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const items = await listItems();
+  const user = await requireUser();
+  const items = await listItems(user.id);
   const stats = computeStats(items);
 
   const cards = items.map((item) => ({

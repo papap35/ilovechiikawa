@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
 import { createItem, listItems } from "@/lib/store";
 import { CollectionItemInputSchema } from "@/lib/plush/schema";
+import { authenticate } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const items = await listItems();
+export async function GET(request: Request) {
+  const auth = authenticate(request);
+  if ("response" in auth) return auth.response;
+
+  const items = await listItems(auth.user.id);
   return NextResponse.json({ items });
 }
 
 export async function POST(request: Request) {
+  const auth = authenticate(request);
+  if ("response" in auth) return auth.response;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -25,6 +32,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const item = await createItem(parsed.data);
+  const item = await createItem(auth.user.id, parsed.data);
   return NextResponse.json({ item }, { status: 201 });
 }

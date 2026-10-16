@@ -1,14 +1,11 @@
 import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
-import type { CollectionItem } from "../plush/schema";
 import {
+  assertSafeKey,
   serialize,
   StorageConflictError,
-  toRows,
   type StorageDriver,
   type StorageSnapshot,
 } from "./driver";
-
-const BLOB_PATH = "collection.json";
 
 /**
  * Vercel Blob 驅動。
@@ -25,27 +22,30 @@ export function createVercelBlobDriver(): StorageDriver {
   return {
     name: "vercel-blob",
 
-    async read(): Promise<StorageSnapshot> {
-      const result = await get(BLOB_PATH, {
+    async read(key: string): Promise<StorageSnapshot> {
+      assertSafeKey(key);
+      const result = await get(key, {
         access: "private",
         useCache: false,
         token: token(),
       });
 
-      // 尚未建立過收藏庫
+      // 尚未建立過這份文件
       if (!result || result.statusCode !== 200 || !result.stream) {
-        return { rows: [], version: null };
+        return { data: null, version: null };
       }
 
       const text = await new Response(result.stream).text();
-      if (!text.trim()) return { rows: [], version: result.blob.etag ?? null };
+      const version = result.blob.etag ?? null;
+      if (!text.trim()) return { data: null, version };
 
-      return { rows: toRows(JSON.parse(text)), version: result.blob.etag ?? null };
+      return { data: JSON.parse(text), version };
     },
 
-    async write(items: CollectionItem[], expectedVersion: string | null): Promise<void> {
+    async write(key: string, data: unknown, expectedVersion: string | null): Promise<void> {
+      assertSafeKey(key);
       try {
-        await put(BLOB_PATH, serialize(items), {
+        await put(key, serialize(data), {
           access: "private",
           contentType: "application/json",
           addRandomSuffix: false,
