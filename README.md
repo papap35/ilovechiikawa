@@ -41,6 +41,8 @@
 - **統計儀表板** — 總估值與區間、成本、未實現損益、待查證隻數、角色／出處／稀有度分布
 - **PWA** — 可安裝到手機主畫面，離線時收藏庫仍打得開
 - **匯出／匯入** — 收藏庫隨時可完整下載備份，格式與伺服器端原生格式相同
+- **Google 登入** — 任何 Google 帳號都能登入，每個人各自一份收藏庫，只看得到、改得到自己的
+- **AI 鑑定額度** — 每人每天預設 10 次，用完仍可手動建檔，管理員不受限
 
 ## 快速開始
 
@@ -98,6 +100,11 @@ npm run dev
 | 變數 | 預設 | 說明 |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | 無 | 未設定時辨識進入示範模式 |
+| `GOOGLE_CLIENT_ID` | 無 | Google OAuth 用戶端 ID。**部署時必填**（見下方「設定 Google 登入」） |
+| `GOOGLE_CLIENT_SECRET` | 無 | Google OAuth 用戶端密鑰。**部署時必填** |
+| `AUTH_SECRET` | 無 | 簽章登入狀態的密鑰，至少 32 字元（`openssl rand -base64 32`）。**部署時必填**；換掉會讓所有人登出 |
+| `CHIIKAWA_AI_DAILY_LIMIT` | `10` | AI 鑑定每人每天的次數上限，台灣時間午夜重置。`0` 代表只有管理員能用 |
+| `CHIIKAWA_ADMIN_EMAILS` | 無 | 不受次數限制的 Google 帳號，以逗號分隔 |
 | `CHIIKAWA_STORAGE` | 自動偵測 | `json`（本機檔案）或 `blob`（Vercel Blob）。不設定時看有沒有 `BLOB_READ_WRITE_TOKEN` 決定 |
 | `CHIIKAWA_DATA_DIR` | `./data` | 本機檔案驅動的存放目錄 |
 | `BLOB_READ_WRITE_TOKEN` | 無 | Vercel Blob 金鑰，在 Vercel 建立 Blob store 後自動注入 |
@@ -156,13 +163,46 @@ src/
 
 **照片在瀏覽器端先縮到長邊 1280px**，對辨識吊牌文字與刺繡細節已經夠用。
 
+**Google 登入是自己實作的 OAuth（授權碼 + PKCE），沒有引入登入套件。** 流程只有三個 route
+（`/api/auth/google`、`/api/auth/callback/google`、`/api/auth/logout`），全部有測試。
+登入狀態是一個以 `AUTH_SECRET` 簽章的 cookie（使用者 id、email、名稱、到期時間），伺服器不存 session，
+serverless 也適用。`src/proxy.ts` 在所有頁面與 API 之前檢查它；每個 route 與頁面再各自解一次使用者，
+**讀誰的收藏庫一律由簽章過的 session 決定**，絕不從網址或 body 讀。正式環境沒設定時刻意**擋下所有請求**：
+忘記設定的代價應該是「打不開」，而不是「整個網站公開在網路上」。
+
+**每人一份收藏庫，但不需要資料庫。** 收藏庫本來就是一份 JSON 文件，多人只是變成每人一份：
+`users/<id>/collection.json`。使用者 id 取自 Google 帳號的 `sub`（不用 email，改 email 不該讓收藏消失）。
+個人收藏的規模下，Blob 每人一個檔案比架一個 Postgres 簡單得多；真的需要跨使用者查詢時再換。
+本機開發不設定登入時，「本機使用者」沿用舊的 `data/collection.json`，既有收藏不會消失。
+
+**AI 額度是「先預約、失敗再退還」。** 呼叫 API 之前就先把次數加上去，同時開十個分頁也不會超過上限；
+辨識失敗、照片格式錯誤都不會吃掉次數。沒有 API 金鑰的示範模式不計額度。
+
 ## 部署
 
-完整步驟見 [`docs/PLAN.md`](docs/PLAN.md)。重點只有一個：
+完整步驟見 [`docs/PLAN.md`](docs/PLAN.md)。
 
-**在 Vercel 上務必先建立 Blob store**（專案 → Storage → Create → Blob）。
-沒有 Blob 的話 app 會退回本機檔案驅動，收藏會存不進去。
-部署後打開 `/settings` 確認「目前的儲存位置」顯示「Vercel Blob」。
+部署前務必做兩件事：
+
+1. **建立 Blob store**（專案 → Storage → Create → Blob）。沒有 Blob 的話 app 會退回本機檔案驅動，收藏會存不進去。
+2. **設定 Google 登入**（見下一節）。沒設定的話網站會拒絕所有請求（刻意的，避免收藏庫對外公開）。
+
+部署後用 Google 登入、打開 `/settings`，確認「目前的儲存位置」顯示「Vercel Blob」，「帳號」顯示你的 Google 帳號。
+
+### 設定 Google 登入
+
+1. 到 [Google Cloud Console](https://console.cloud.google.com/) 建立（或選一個）專案
+2. **APIs & Services → OAuth consent screen**：User type 選 **External**，填 App name、支援 email；
+   Scopes 只需要 `openid`、`email`、`profile`。測試沒問題後按 **Publish app**——
+   停留在 Testing 狀態時，只有你手動加進 Test users 的帳號能登入
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**：類型選 **Web application**
+4. **Authorized redirect URIs** 加上（網域換成你的）：
+   - `https://你的網域/api/auth/callback/google`
+   - 本機測試時另外加 `http://localhost:3000/api/auth/callback/google`
+5. 把 Client ID 與 Client secret 填進 Vercel 的環境變數 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`，
+   再用 `openssl rand -base64 32` 產生一組 `AUTH_SECRET`
+6. 建議把自己的 email 填進 `CHIIKAWA_ADMIN_EMAILS`，自己用 AI 鑑定時不受每日次數限制
+7. 重新部署
 
 ## 估值的可信度
 

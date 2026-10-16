@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { StorageConflictError, type StorageDriver } from "@/lib/store/driver";
+import { assertSafeKey, StorageConflictError, type StorageDriver } from "@/lib/store/driver";
 import { createJsonFileDriver } from "@/lib/store/json-file-driver";
-import { CollectionItemSchema, type CollectionItem } from "@/lib/plush/schema";
+import { createVercelBlobDriver } from "@/lib/store/vercel-blob-driver";
 
 let dir: string;
 
@@ -21,49 +21,56 @@ afterEach(async () => {
   vi.resetModules();
 });
 
-function item(overrides: Partial<CollectionItem> = {}): CollectionItem {
-  return CollectionItemSchema.parse({
-    id: "a",
-    name: "測試車",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-    ...overrides,
+describe("assertSafeKey", () => {
+  it("接受一般的文件路徑", () => {
+    expect(() => assertSafeKey("collection.json")).not.toThrow();
+    expect(() => assertSafeKey("users/g-123/collection.json")).not.toThrow();
   });
-}
+
+  it("拒絕跳出資料目錄或格式怪異的路徑", () => {
+    for (const key of ["../etc/passwd.json", "users/../../x.json", "/abs.json", "users/A/x.json", "x.txt", ""]) {
+      expect(() => assertSafeKey(key)).toThrow();
+    }
+  });
+
+  it("兩個驅動都會擋，不只是本機檔案", async () => {
+    await expect(createJsonFileDriver().read("../x.json")).rejects.toThrow();
+    await expect(createVercelBlobDriver().read("../x.json")).rejects.toThrow();
+  });
+});
 
 describe("createJsonFileDriver", () => {
-  it("檔案不存在時回傳空收藏庫而不是拋錯", async () => {
-    const driver = createJsonFileDriver();
-    expect(await driver.read()).toEqual({ rows: [], version: null });
+  it("文件不存在時回傳 null 而不是拋錯", async () => {
+    expect(await createJsonFileDriver().read("collection.json")).toEqual({ data: null, version: null });
   });
 
-  it("寫入後讀得回來", async () => {
+  it("寫入後讀得回來，子目錄會自動建立", async () => {
     const driver = createJsonFileDriver();
-    await driver.write([item({ name: "GT-R" })], null);
-    const snapshot = await driver.read();
-    expect(snapshot.rows).toHaveLength(1);
-    expect((snapshot.rows[0] as CollectionItem).name).toBe("GT-R");
+    await driver.write("users/g-1/collection.json", [{ name: "小八" }], null);
+    expect((await driver.read("users/g-1/collection.json")).data).toEqual([{ name: "小八" }]);
   });
 
-  it("檔案內容不是陣列時當作空收藏庫，而不是讓整個 app 掛掉", async () => {
-    await fs.writeFile(path.join(dir, "collection.json"), '{"不是":"陣列"}', "utf8");
-    expect((await createJsonFileDriver().read()).rows).toEqual([]);
+  it("不同 key 互不影響", async () => {
+    const driver = createJsonFileDriver();
+    await driver.write("users/g-1/collection.json", ["a"], null);
+    await driver.write("users/g-2/collection.json", ["b"], null);
+    expect((await driver.read("users/g-1/collection.json")).data).toEqual(["a"]);
+    expect((await driver.read("users/g-2/collection.json")).data).toEqual(["b"]);
   });
 
   it("寫入是原子的：不會留下半個檔案", async () => {
-    const driver = createJsonFileDriver();
-    await driver.write([item()], null);
+    await createJsonFileDriver().write("collection.json", [], null);
     // 暫存檔應該都被 rename 掉了，目錄裡只剩正式檔案
     expect(await fs.readdir(dir)).toEqual(["collection.json"]);
   });
 
   it("執行期改變資料目錄會立刻生效", async () => {
     const driver = createJsonFileDriver();
-    await driver.write([item()], null);
+    await driver.write("collection.json", ["x"], null);
 
     const other = await fs.mkdtemp(path.join(os.tmpdir(), "chiikawa-driver-alt-"));
     process.env.CHIIKAWA_DATA_DIR = other;
-    expect((await driver.read()).rows).toEqual([]);
+    expect((await driver.read("collection.json")).data).toBeNull();
     await fs.rm(other, { recursive: true, force: true });
   });
 });
@@ -108,55 +115,52 @@ describe("selectDriver", () => {
 describe("寫入衝突的重試", () => {
   function makeConflictingDriver(conflictsBeforeSuccess: number): StorageDriver & {
     writes: number;
-    stored: CollectionItem[];
+    stored: Map<string, unknown>;
   } {
     let remaining = conflictsBeforeSuccess;
     const driver = {
       name: "fake",
       writes: 0,
-      stored: [] as CollectionItem[],
-      async read() {
-        return { rows: driver.stored, version: `v${driver.writes}` };
+      stored: new Map<string, unknown>(),
+      async read(key: string) {
+        return { data: driver.stored.get(key) ?? null, version: `v${driver.writes}` };
       },
-      async write(items: CollectionItem[]) {
+      async write(key: string, data: unknown) {
         driver.writes += 1;
         if (remaining > 0) {
           remaining -= 1;
           throw new StorageConflictError();
         }
-        driver.stored = items;
+        driver.stored.set(key, data);
       },
     };
     return driver;
   }
 
-  it("衝突一次後重讀重試，最終成功", async () => {
-    const driver = makeConflictingDriver(1);
+  async function storeWith(driver: StorageDriver) {
     vi.resetModules();
-    vi.doMock("@/lib/store/json-file-driver", () => ({
-      createJsonFileDriver: () => driver,
-    }));
-
+    vi.doMock("@/lib/store/json-file-driver", () => ({ createJsonFileDriver: () => driver }));
     const store = await import("@/lib/store");
     store.resetDriverCache();
-    const created = await store.createItem({ name: "重試測試" });
+    return store;
+  }
 
-    expect(created.name).toBe("重試測試");
-    expect(driver.writes).toBe(2); // 第一次衝突，第二次成功
-    expect(driver.stored).toHaveLength(1);
+  afterEach(() => {
     vi.doUnmock("@/lib/store/json-file-driver");
   });
 
-  it("持續衝突超過重試上限就往上拋，不會默默吃掉使用者的修改", async () => {
-    const driver = makeConflictingDriver(99);
-    vi.resetModules();
-    vi.doMock("@/lib/store/json-file-driver", () => ({
-      createJsonFileDriver: () => driver,
-    }));
+  it("衝突一次後重讀重試，最終成功", async () => {
+    const driver = makeConflictingDriver(1);
+    const store = await storeWith(driver);
+    const created = await store.createItem("g-1", { name: "重試測試" });
 
-    const store = await import("@/lib/store");
-    store.resetDriverCache();
-    await expect(store.createItem({ name: "一直衝突" })).rejects.toThrow(StorageConflictError);
-    vi.doUnmock("@/lib/store/json-file-driver");
+    expect(created.name).toBe("重試測試");
+    expect(driver.writes).toBe(2); // 第一次衝突，第二次成功
+    expect(driver.stored.get("users/g-1/collection.json")).toHaveLength(1);
+  });
+
+  it("持續衝突超過重試上限就往上拋，不會默默吃掉使用者的修改", async () => {
+    const store = await storeWith(makeConflictingDriver(99));
+    await expect(store.createItem("g-1", { name: "一直衝突" })).rejects.toThrow(StorageConflictError);
   });
 });

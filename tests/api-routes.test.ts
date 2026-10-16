@@ -40,6 +40,8 @@ const patch = (url: string, body: unknown) =>
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
+const get = (url: string) => new Request(url);
+
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
 async function createSample(overrides: Record<string, unknown> = {}) {
@@ -82,12 +84,12 @@ describe("POST /api/items", () => {
 
 describe("GET /api/items", () => {
   it("空收藏庫回空陣列", async () => {
-    expect((await (await listItemsRoute()).json()).items).toEqual([]);
+    expect((await (await listItemsRoute(get("http://x/api/items"))).json()).items).toEqual([]);
   });
 
   it("回傳已建立的收藏品", async () => {
     await createSample({ name: "第一隻" });
-    const { items } = await (await listItemsRoute()).json();
+    const { items } = await (await listItemsRoute(get("http://x/api/items"))).json();
     expect(items).toHaveLength(1);
     expect(items[0].name).toBe("第一隻");
   });
@@ -151,14 +153,14 @@ describe("/api/items/[id]", () => {
 
 describe("GET /api/stats", () => {
   it("空收藏庫的統計是零而不是 NaN", async () => {
-    const { stats } = await (await statsRoute()).json();
+    const { stats } = await (await statsRoute(get("http://x/api/stats"))).json();
     expect(stats.totalItems).toBe(0);
     expect(stats.estimatedValueTwd).toBe(0);
   });
 
   it("統計會把數量計入總隻數", async () => {
     await createSample({ quantity: 3 });
-    const { stats } = await (await statsRoute()).json();
+    const { stats } = await (await statsRoute(get("http://x/api/stats"))).json();
     expect(stats.totalItems).toBe(1);
     expect(stats.totalUnits).toBe(3);
     expect(stats.byChannel).toHaveLength(1);
@@ -169,7 +171,7 @@ describe("GET /api/stats", () => {
 describe("匯出與匯入", () => {
   it("匯出帶著下載檔名與正確的 content type", async () => {
     await createSample({ name: "要匯出的" });
-    const response = await exportRoute();
+    const response = await exportRoute(get("http://x/api/collection/export"));
     expect(response.headers.get("Content-Type")).toContain("application/json");
     expect(response.headers.get("Content-Disposition")).toContain("attachment");
     expect(response.headers.get("Content-Disposition")).toContain("ilovechiikawa-");
@@ -181,16 +183,16 @@ describe("匯出與匯入", () => {
 
   it("匯出的內容可以原樣匯入回來", async () => {
     await createSample({ name: "來回一趟", rarity: "S" });
-    const exported = await (await exportRoute()).text();
+    const exported = await (await exportRoute(get("http://x/api/collection/export"))).text();
 
     // 先清空，再匯入
     await importRoute(post("http://x/api/collection/import", []));
-    expect((await (await listItemsRoute()).json()).items).toEqual([]);
+    expect((await (await listItemsRoute(get("http://x/api/items"))).json()).items).toEqual([]);
 
     const response = await importRoute(post("http://x/api/collection/import", exported));
     expect((await response.json())).toEqual({ imported: 1, skipped: 0 });
 
-    const { items } = await (await listItemsRoute()).json();
+    const { items } = await (await listItemsRoute(get("http://x/api/items"))).json();
     expect(items[0].name).toBe("來回一趟");
     expect(items[0].rarity).toBe("S");
   });

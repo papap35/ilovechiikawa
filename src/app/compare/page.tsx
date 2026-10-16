@@ -1,4 +1,5 @@
 import { listItems } from "@/lib/store";
+import { requireUser } from "@/lib/session";
 import { currencyRates } from "@/lib/plush/channels";
 import { CompareClient } from "@/components/CompareClient";
 
@@ -10,7 +11,8 @@ export default async function ComparePage({
   searchParams: Promise<{ ids?: string }>;
 }) {
   const { ids } = await searchParams;
-  const items = await listItems();
+  const user = await requireUser();
+  const items = await listItems(user.id);
   const initialIds = (ids ?? "").split(",").map((id) => id.trim()).filter(Boolean);
 
   return <CompareClient items={items} initialIds={initialIds} rates={currencyRates()} />;

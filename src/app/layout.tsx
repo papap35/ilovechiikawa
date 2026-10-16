@@ -23,13 +23,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <div className="app">
           <header className="masthead">
-            <Link href="/" className="brand">
+            <Link href="/" className="brand" aria-label="ilovechiikawa 首頁">
               <span className="mark" aria-hidden />
-              <span>ilovechiikawa</span>
+              <span className="brand-name">ilovechiikawa</span>
               <small>吉伊卡哇玩偶收藏 · AI 鑑定</small>
             </Link>
             <nav className="masthead-actions">
-              <Link href="/settings" className="btn btn-icon" aria-label="資料與備份" title="資料與備份">
+              <Link href="/settings" className="btn btn-icon" aria-label="帳號、資料與備份" title="帳號、資料與備份">
                 資料
               </Link>
               <Link href="/compare" className="btn">
