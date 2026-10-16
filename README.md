@@ -41,6 +41,7 @@
 - **統計儀表板** — 總估值與區間、成本、未實現損益、待查證隻數、角色／出處／稀有度分布
 - **PWA** — 可安裝到手機主畫面，離線時收藏庫仍打得開
 - **匯出／匯入** — 收藏庫隨時可完整下載備份，格式與伺服器端原生格式相同
+- **存取控制** — 一組共用密碼保護所有頁面與 API，部署後陌生人打不開你的收藏庫
 
 ## 快速開始
 
@@ -98,6 +99,7 @@ npm run dev
 | 變數 | 預設 | 說明 |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | 無 | 未設定時辨識進入示範模式 |
+| `CHIIKAWA_PASSWORD` | 無 | 存取密碼。**部署時必填**：正式環境沒設定會拒絕所有請求；本機 `npm run dev` 沒設定則不需要登入 |
 | `CHIIKAWA_STORAGE` | 自動偵測 | `json`（本機檔案）或 `blob`（Vercel Blob）。不設定時看有沒有 `BLOB_READ_WRITE_TOKEN` 決定 |
 | `CHIIKAWA_DATA_DIR` | `./data` | 本機檔案驅動的存放目錄 |
 | `BLOB_READ_WRITE_TOKEN` | 無 | Vercel Blob 金鑰，在 Vercel 建立 Blob store 後自動注入 |
@@ -156,13 +158,21 @@ src/
 
 **照片在瀏覽器端先縮到長邊 1280px**，對辨識吊牌文字與刺繡細節已經夠用。
 
+**存取控制是一組密碼，不是帳號系統。** 這是個人工具，需要的只是「知道網址的陌生人進不來」。
+`src/proxy.ts` 在所有頁面與 API 之前檢查 cookie；cookie 是以密碼為金鑰的 HMAC，不含密碼本身，
+伺服器也不必存任何 session——換密碼就等於讓所有裝置一起登出。正式環境沒設密碼時刻意**擋下所有請求**
+而不是放行：忘記設定的代價應該是「打不開」，而不是「整個收藏庫公開在網路上」。
+
 ## 部署
 
-完整步驟見 [`docs/PLAN.md`](docs/PLAN.md)。重點只有一個：
+完整步驟見 [`docs/PLAN.md`](docs/PLAN.md)。
 
-**在 Vercel 上務必先建立 Blob store**（專案 → Storage → Create → Blob）。
-沒有 Blob 的話 app 會退回本機檔案驅動，收藏會存不進去。
-部署後打開 `/settings` 確認「目前的儲存位置」顯示「Vercel Blob」。
+部署前務必做兩件事：
+
+1. **建立 Blob store**（專案 → Storage → Create → Blob）。沒有 Blob 的話 app 會退回本機檔案驅動，收藏會存不進去。
+2. **設定 `CHIIKAWA_PASSWORD`**。沒設定的話網站會拒絕所有請求（刻意的，避免收藏庫對外公開）。
+
+部署後登入、打開 `/settings`，確認「目前的儲存位置」顯示「Vercel Blob」，「存取控制」顯示已設定密碼。
 
 ## 估值的可信度
 

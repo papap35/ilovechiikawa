@@ -663,3 +663,8 @@ a { color: inherit; text-decoration: none; }
   /* 窄螢幕先犧牲次要入口，保住主要動作 */
   .btn-icon { display: none; }
 }
+
+
+/* ---------- 登入 ---------- */
+
+.login { max-width: 380px; margin: 48px auto 0; }

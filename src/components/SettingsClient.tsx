@@ -2,15 +2,18 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { AuthMode } from "@/lib/auth";
 
 export function SettingsClient({
   itemCount,
   driverName,
   driverLabel,
+  authMode,
 }: {
   itemCount: number;
   driverName: string;
   driverLabel: string;
+  authMode: AuthMode;
 }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -39,6 +42,11 @@ export function SettingsClient({
       setImporting(false);
       if (fileInput.current) fileInput.current.value = "";
     }
+  };
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
   };
 
   return (
@@ -71,6 +79,26 @@ export function SettingsClient({
             注意：Vercel 之類的 serverless 平台檔案系統是唯讀的。若這個頁面在雲端上顯示
             「本機檔案」，代表 Blob 尚未連上，新增的收藏會存不進去——
             請確認環境變數 <code>BLOB_READ_WRITE_TOKEN</code> 已設定。
+          </p>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>存取控制</h2>
+        {authMode === "password" ? (
+          <>
+            <p className="panel-note">
+              已設定存取密碼，沒登入的人打不開任何頁面，也讀寫不了收藏庫。
+              更換 <code>CHIIKAWA_PASSWORD</code> 會讓所有已登入的裝置一起登出。
+            </p>
+            <button type="button" className="btn" onClick={() => void logout()}>
+              登出這台裝置
+            </button>
+          </>
+        ) : (
+          <p className="field-hint" style={{ marginTop: 0 }}>
+            尚未設定 <code>CHIIKAWA_PASSWORD</code>，目前任何人都能打開這個網站。
+            本機開發不影響；部署到雲端前請務必設定，正式環境沒有密碼時會拒絕所有請求。
           </p>
         )}
       </section>

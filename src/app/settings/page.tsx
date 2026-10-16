@@ -1,5 +1,6 @@
 import { listItems, selectDriver } from "@/lib/store";
 import { SettingsClient } from "@/components/SettingsClient";
+import { authMode } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function SettingsPage() {
       itemCount={items.length}
       driverName={driver.name}
       driverLabel={DRIVER_LABELS[driver.name] ?? driver.name}
+      authMode={authMode()}
     />
   );
 }

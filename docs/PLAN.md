@@ -67,7 +67,7 @@
 ## 5. 路線圖
 
 - **Phase 1（完成）**：領域模型、拍照鑑定、仿冒疑點、可解釋估值、收藏庫、統計、比較、備份、PWA
-- **Phase 2 上線**：部署到 Vercel、真實 API 驗證（4.1）、存取控制（至少一層密碼）
+- **Phase 2 上線**：部署到 Vercel、真實 API 驗證（4.1）；存取控制（共用密碼）已完成
 - **Phase 3 體驗**：每隻多張照片（正面／吊牌／布標）、照片改存獨立 Blob、願望清單、
   一番賞整套進度追蹤（A–Z 賞與ラストワン賞收集狀態）
 - **Phase 4 真實行情**：接入成交資料、價格趨勢、以實際成交回推校正係數
@@ -76,8 +76,8 @@
 
 1. Vercel → Add New Project → 匯入 `papap35/ilovechiikawa`
 2. 專案 → Storage → Create → Blob（**不能跳過**，會自動注入 `BLOB_READ_WRITE_TOKEN`）
-3. 環境變數：`ANTHROPIC_API_KEY`（必要）、`CHIIKAWA_JPY_TWD`（選填）
-4. 部署後打開 `/settings` 確認儲存位置顯示「Vercel Blob」
+3. 環境變數：`ANTHROPIC_API_KEY`（必要）、`CHIIKAWA_PASSWORD`（必要，沒設定會拒絕所有請求）、`CHIIKAWA_JPY_TWD`（選填）
+4. 部署後登入，打開 `/settings` 確認儲存位置顯示「Vercel Blob」、存取控制顯示已設定密碼
 5. Functions 區域選 Tokyo (hnd1) 或 Singapore (sin1)
 
 ## 7. 風險
@@ -87,4 +87,4 @@
 | AI 誤判真假 | AI 最多給「大致可信」；疑點逐條列出供人工比對；估值明確標示為參考值 |
 | 行情與實際成交落差大 | 係數集中可調；Phase 4 用成交資料校正 |
 | 角色 IP 與商標 | 僅作事實性描述；不使用任何官方圖像；聲明與原作者及授權商無關 |
-| 公開網址無存取控制 | Phase 2 補上 |
+| 密碼被猜中 | 錯誤時延遲回應拖慢猜測速度；請用夠長的密碼。若需要更強的防護，可再加 Vercel 的 Deployment Protection 或改用帳號登入 |
